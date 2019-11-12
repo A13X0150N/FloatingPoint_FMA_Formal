@@ -1,0 +1,7 @@
+modelsim.ini
+.visualizer/
+Output_Results/
+qcache/
+work/
+qverify*
+*.log
