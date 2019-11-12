@@ -92,7 +92,8 @@ module fpu_fma
     output float_sp float_answer_out,   // Answer float output
     output bit      ready_answer_out,   // Signal answer output ready
     output bit      overflow_out,       // Signal overflow condition was produced
-    output bit      underflow_out       // Signal underflow condition was produced
+    output bit      underflow_out,      // Signal underflow condition was produced
+    output fma_state_e state_out        // Output state for formal tools
 );
 
     bit [NBITS:0] count;                // Internal count of when to output accumulator
@@ -114,14 +115,15 @@ module fpu_fma
                       ((float_1_in.mantissa && !float_1_in.exponent) || float_1_in.exponent == '1);
 
     // Error detection
-    assign error_generated = (($signed(product.exponent) > MAX_EXP) || ($signed(product.exponent) < MIN_EXP));
-    assign overflow_out = ($signed(product.exponent) > MAX_EXP);
-    assign underflow_out = ($signed(product.exponent) < MIN_EXP);
+    assign error_generated = (($signed(product.exponent) >= MAX_EXP) || ($signed(product.exponent) <= MIN_EXP));
+    assign overflow_out = ($signed(product.exponent) >= MAX_EXP);
+    assign underflow_out = ($signed(product.exponent) <= MIN_EXP);
 
     // State machine driver
     always_ff @(posedge clk) begin
         state <= rst ? IDLE : next_state;
     end
+    assign state_out = state;
 
     // Next state logic
     always_comb begin
@@ -311,7 +313,6 @@ module fpu_fma
                     float_1 <= float_1;
                     // If the product is denormalized
                     if (product.mantissa[2*MANBITS+1]) begin
-                        //if (accum.exponent < ($signed(product.exponent)+1)) begin
                         if (accum.exponent < (product.exponent+1)) begin
                             accum.sign <= accum.sign;
                             accum.exponent <= $signed(accum.exponent) + (($signed(product.exponent)+1)-$signed(accum.exponent));
