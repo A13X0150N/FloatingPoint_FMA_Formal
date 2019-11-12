@@ -1,0 +1,7 @@
+$default_clock clk
+$default_input_value 0
+rst = 1'b0
+##10
+rst = 1'b1
+##10
+rst = 1'b0
