@@ -14,7 +14,7 @@
 //              float_1
 //                |
 //                v
-//  float_0 ---> FMA ---> float_0
+//  float_0 ---> FMA ---> float_000
 //                | \
 //                v  ans
 //              float_1
