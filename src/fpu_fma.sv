@@ -22,8 +22,8 @@
 // ------------------------------------------------------------------------------
 
 parameter FP = 32;              // Floating point bit selection
-parameter M = 3;                // Maximum register row size
-parameter N = 3;                // Maximum register column size
+parameter M = 1;                // Maximum register row size
+parameter N = 1;                // Maximum register column size
 parameter MBITS = $clog2(M)-1;  // Register row bits
 parameter NBITS = $clog2(N)-1;  // Register column bits
 parameter EXPBITS = 8;          // 8 exponent bits
@@ -355,10 +355,10 @@ module fpu_fma
                     float_1_out <= '0;
                     float_0 <= float_0;
                     float_1 <= float_1;
-                    accum.sign <= accum.sign;
+                    accum.sign <= product.sign;
                     accum.exponent <= accum.exponent;
                     // Check if adding both positive or both negative numbers
-                    if (accum.sign == product.sign) begin
+                    if ((!accum.exponent && !accum.mantissa) || (!product.exponent && !product.mantissa) || (accum.sign == product.sign)) begin
                         accum.mantissa <= product.mantissa + accum.mantissa;
                     end
                     // Else there is a subtraction to perform
