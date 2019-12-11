@@ -52,9 +52,15 @@ module sva_fpu_fma (clk, rst, float_0_busy_in, float_1_busy_in, busy_out, float_
 
     // Sequences
     sequence multiply (in1, in2, expected);
-        ((float_0_in == in1) & (float_1_in == in2) & float_0_req_in & float_1_req_in) [*2]
-            ##[1:10] float_answer_out == expected;
+        ((float_0_in == in1) & (float_1_in == in2) & float_0_req_in & float_1_req_in)
+            ##[1:8] (float_answer_out == expected);// & (state_out == OUTPUT);
     endsequence
+
+    // Assumptions
+    assume_no_load_state: assume property ( state_out != LOAD );
+    assume_nonzero_input: assume property ( ({float_0_in.exponent, float_0_in.mantissa} != '0) && ({float_1_in.exponent, float_1_in.mantissa} != '0) );
+    assume_tie_requests:  assume property ( float_0_req_in == float_1_req_in );
+    assume_stable_input:  assume property ( $rose(float_0_req_in) |-> ($stable(float_0_in) & $stable(float_1_in))[*2] ##1 !float_0_req_in[*6] );
 
     // Covers
     answer_ready_cover:            cover property ( $rose(ready_answer_out) );
@@ -79,15 +85,9 @@ module sva_fpu_fma (clk, rst, float_0_busy_in, float_1_busy_in, busy_out, float_
     state_output_to_idle_cover:    cover property ( (state_out == OUTPUT) |=> (state_out == IDLE) );
     state_output_to_error_cover:   cover property ( (state_out == OUTPUT) |=> (state_out == ERROR) );
     cover_multiply_pos1_x_pos1:    cover property ( multiply(32'h3f800000, 32'h3f800000, 32'h3f800000) );
+    bad_cover_multiply_pos1_x_pos1:    cover property ( multiply(32'h3f800000, 32'h3f800000, 32'h41200000) );
 
-    // Assumptions
-    //assume_hold_input0:   assume property ( $rose(float_0_req_in) |-> (float_0_req_in throughout busy_out[->1]) ##1 !float_0_req_in );
-    //assume_hold_input1:   assume property ( $rose(float_1_req_in) |-> (float_1_req_in throughout busy_out[->1]) ##1 !float_1_req_in );
-    assume_no_load_state: assume property ( state_out != LOAD );
-    assume_nonzero_input: assume property ( ({float_0_in.exponent, float_0_in.mantissa} != '0) && ({float_1_in.exponent, float_1_in.mantissa} != '0) );
-    assume_tie_requests:  assume property ( float_0_req_in == float_1_req_in );
-    assume_stable_input: assume property ( $rose(float_0_req_in) |-> ($stable(float_0_in) & $stable(float_1_in))[*2] );
-
+    
     // Assertions
     assert_answer_produced: assert property ( float_0_req_in & float_1_req_in |-> ##[1:20] $rose(ready_answer_out) );
 
