@@ -55,17 +55,32 @@ module sva_fpu_fma (clk, rst, float_0_busy_in, float_1_busy_in, busy_out, float_
         ((float_0_in == in1) & (float_1_in == in2) & float_0_req_in & float_1_req_in)
             ##[1:8] (float_answer_out == expected);// & (state_out == OUTPUT);
     endsequence
+	
+    /////////////////
+    // Assumptions //
+	/////////////////
+    assume_no_load_state:           assume property ( state_out != LOAD );
+    assume_nonzero_input:           assume property ( ({float_0_in.exponent, float_0_in.mantissa} != '0) && ({float_1_in.exponent, float_1_in.mantissa} != '0) );
+    assume_tie_requests:            assume property ( float_0_req_in == float_1_req_in );
+    assume_stable_input0:           assume property ( $rose(float_0_req_in) |-> ($stable(float_0_in) & $stable(float_1_in))[*2] ##1 !float_0_req_in[*6] );
+	assume_stable_input1:           assume property ( $rose(float_1_req_in) |-> ($stable(float_0_in) & $stable(float_1_in))[*2] ##1 !float_1_req_in[*6] );
+	// Want to make float_0_in and float_1_in change simultaneouslly
+	assume_input_change_concurrent: assume property ($changed(float_0_in) |-> $changed(float_1_in));
+	// We need busy_in signal to make the FSM go to OUTPUT state. But we don't want to keep these signal high forever.
+	assume_set_proper_busy_in:      assume property (state_out == OUTPUT |-> (float_0_busy_in == 1'b1 & float_1_busy_in == 1'b1)[*2] ##1 (float_0_busy_in != 1'b1 & float_1_busy_in != 1'b1));
+	// Hard to constraint the leagal inputs and generate valid multiplication result. So, for verify the basic multiplication, just neglect ERROR now.
+	assume_no_ERROR_state:          assume property (state_out != ERROR); 
 
-    // Assumptions
-    assume_no_load_state: assume property ( state_out != LOAD );
-    assume_nonzero_input: assume property ( ({float_0_in.exponent, float_0_in.mantissa} != '0) && ({float_1_in.exponent, float_1_in.mantissa} != '0) );
-    assume_tie_requests:  assume property ( float_0_req_in == float_1_req_in );
-    assume_stable_input:  assume property ( $rose(float_0_req_in) |-> ($stable(float_0_in) & $stable(float_1_in))[*2] ##1 !float_0_req_in[*6] );
-
-    // Covers
+    /////////////////
+    // Covers      //
+	/////////////////	
+	
+    // Covers - Make sure interesting value is valid
     answer_ready_cover:            cover property ( $rose(ready_answer_out) );
     overflow_produced_cover:       cover property ( $rose(overflow_out) );
     underflow_produced_cover:      cover property ( $rose(underflow_out) );
+	
+	// Covers - Make sure all states and transitions reachable
     state_idle_cover:              cover property ( state_out == IDLE );
     state_load_cover:              cover property ( state_out == LOAD );
     state_multiply_cover:          cover property ( state_out == MULTIPLY );
@@ -84,11 +99,17 @@ module sva_fpu_fma (clk, rst, float_0_busy_in, float_1_busy_in, busy_out, float_
     state_output_to_output_cover:  cover property ( (state_out == OUTPUT) |=> (state_out == OUTPUT) );
     state_output_to_idle_cover:    cover property ( (state_out == OUTPUT) |=> (state_out == IDLE) );
     state_output_to_error_cover:   cover property ( (state_out == OUTPUT) |=> (state_out == ERROR) );
-    cover_multiply_pos1_x_pos1:    cover property ( multiply(32'h3f800000, 32'h3f800000, 32'h3f800000) );
-    bad_cover_multiply_pos1_x_pos1:    cover property ( multiply(32'h3f800000, 32'h3f800000, 32'h41200000) );
+	
+	// Covers - Check for multiplication for different kinds of input
+    cover_multiply_pos1_x_pos1:      cover property ( multiply(32'h3f800000, 32'h3f800000, 32'h3f800000) ); // 1 * 1 = 1
+    bad_cover_multiply_pos1_x_pos1:  cover property ( multiply(32'h3f800000, 32'h3f800000, 32'h41200000) ); // 1 * 1 = 10
+	cover_multiply_pos15_x_neg20:    cover property ( multiply(32'h41700000, 32'hc1a00000, 32'hc3960000) ); // 15 * (-20) = -300
+	cover_multiply_neg26_x_pos31:    cover property ( multiply(32'hc1d00000, 32'h41f80000, 32'hc4498000) ); // (-26) * 31 = -806
 
     
-    // Assertions
-    assert_answer_produced: assert property ( float_0_req_in & float_1_req_in |-> ##[1:20] $rose(ready_answer_out) );
+    /////////////////
+    // Assertions  //
+	/////////////////
+	assert_answer_produced: assert property ( float_0_req_in & float_1_req_in |-> ##[1:7] (state_out == OUTPUT) ##1 $rose(ready_answer_out) );
 
 endmodule : sva_fpu_fma
