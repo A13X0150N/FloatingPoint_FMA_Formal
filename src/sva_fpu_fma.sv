@@ -59,17 +59,16 @@ module sva_fpu_fma (clk, rst, float_0_busy_in, float_1_busy_in, busy_out, float_
     /////////////////
     // Assumptions //
 	/////////////////
-    assume_no_load_state:           assume property ( state_out != LOAD );
     assume_nonzero_input:           assume property ( ({float_0_in.exponent, float_0_in.mantissa} != '0) && ({float_1_in.exponent, float_1_in.mantissa} != '0) );
     assume_tie_requests:            assume property ( float_0_req_in == float_1_req_in );
-    assume_stable_input0:           assume property ( $rose(float_0_req_in) |-> ($stable(float_0_in) & $stable(float_1_in))[*2] ##1 !float_0_req_in[*6] );
-	assume_stable_input1:           assume property ( $rose(float_1_req_in) |-> ($stable(float_0_in) & $stable(float_1_in))[*2] ##1 !float_1_req_in[*6] );
+    assume_stable_input0:           assume property ( $rose(float_0_req_in) |-> ($stable($sampled(float_0_in)) & $stable($sampled(float_1_in)))[*2] ##1 !float_0_req_in[*10] );
 	// Want to make float_0_in and float_1_in change simultaneouslly
-	assume_input_change_concurrent: assume property ($changed(float_0_in) |-> $changed(float_1_in));
+	assume_input_change_concurrent: assume property ( $changed(float_0_in) |-> $changed(float_1_in) );
 	// We need busy_in signal to make the FSM go to OUTPUT state. But we don't want to keep these signal high forever.
-	assume_set_proper_busy_in:      assume property (state_out == OUTPUT |-> (float_0_busy_in == 1'b1 & float_1_busy_in == 1'b1)[*2] ##1 (float_0_busy_in != 1'b1 & float_1_busy_in != 1'b1));
-	// Hard to constraint the leagal inputs and generate valid multiplication result. So, for verify the basic multiplication, just neglect ERROR now.
-	assume_no_ERROR_state:          assume property (state_out != ERROR); 
+	assume_set_proper_busy_in:      assume property ( state_out == OUTPUT |-> (float_0_busy_in & float_1_busy_in)[*2] ##1 !float_0_busy_in & !float_1_busy_in );
+    // Hard to constraint the leagal inputs and generate valid multiplication result. So, for verify the basic multiplication, just neglect ERROR and LOAD now.
+	//assume_no_error_state:          assume property ( state_out != ERROR ); 
+    assume_no_load_state:           assume property ( state_out != LOAD );
 
     /////////////////
     // Covers      //
@@ -97,21 +96,36 @@ module sva_fpu_fma (clk, rst, float_0_busy_in, float_1_busy_in, busy_out, float_
     state_load_to_multiply_cover:  cover property ( (state_out == LOAD) |=> (state_out == MULTIPLY) );
     state_load_to_error_cover:     cover property ( (state_out == LOAD) |=> (state_out == ERROR) );
     state_output_to_output_cover:  cover property ( (state_out == OUTPUT) |=> (state_out == OUTPUT) );
-    state_output_to_idle_cover:    cover property ( (state_out == OUTPUT) |=> (state_out == IDLE) );
+    state_output_to_idle_cover:    cover property ( (state_out == OUTPUT) |=> ##[1:9] (state_out == IDLE) );
     state_output_to_error_cover:   cover property ( (state_out == OUTPUT) |=> (state_out == ERROR) );
 	
 	// Covers - Check for multiplication for different kinds of input
-    cover_multiply_pos1_x_pos1:      cover property ( multiply(32'h3f800000, 32'h3f800000, 32'h3f800000) ); // 1 * 1 = 1
-    bad_cover_multiply_pos1_x_pos1:  cover property ( multiply(32'h3f800000, 32'h3f800000, 32'h41200000) ); // 1 * 1 = 10
-	cover_multiply_pos15_x_neg20:    cover property ( multiply(32'h41700000, 32'hc1a00000, 32'hc3960000) ); // 15 * (-20) = -300
-	cover_multiply_neg26_x_pos31:    cover property ( multiply(32'hc1d00000, 32'h41f80000, 32'hc4498000) ); // (-26) * 31 = -806
-
+    cover_mult_pos1_x_pos1:        cover property ( multiply(32'h3f800000, 32'h3f800000, 32'h3f800000) ); // 1 * 1 = 1
+    bad_cover_mult_pos1_x_pos1:    cover property ( multiply(32'h3f800000, 32'h3f800000, 32'h41200000) ); // 1 * 1 = 10
+	cover_mult_pos15_x_neg20:      cover property ( multiply(32'h41700000, 32'hc1a00000, 32'hc3960000) ); // 15 * (-20) = -300
+	cover_mult_neg26_x_pos31:      cover property ( multiply(32'hc1d00000, 32'h41f80000, 32'hc4498000) ); // (-26) * 31 = -806
+    cover_mult_neg1_5_x_neg10_75:  cover property ( multiply(32'hbfc00000, 32'hc12c0000, 32'h41810000) ); // (-1.5) * (-10.75) = 16.125
     
     /////////////////
     // Assertions  //
 	/////////////////
-	assert_answer_produced:        assert property ( float_0_req_in & float_1_req_in |-> ##[1:7] (state_out == OUTPUT) ##1 $rose(ready_answer_out) );
+	assert_answer_produced:        assert property ( (state_out == MULTIPLY) |-> ##[1:8] $rose(ready_answer_out) );
+    liveness_output_ready_answer:  assert property ( (state_out == OUTPUT) |=> ready_answer_out );
 	liveness_back_to_IDLE:         assert property (state_out == IDLE |-> s_eventually(state_out == IDLE));
-	assert_busy_output_check:      assert property (state_out != IDLE |=> busy_out == 1'b1);
+	
+    genvar i;
+    generate
+    for (i = MULTIPLY; i <= OUTPUT; ++i) begin: a1
+        assert_busy_output_check:      assert property ((state_out == i) |-> $sampled(busy_out));
+    end
+    endgenerate
+
+    float_sp past_float0, past_float1;
+    always_latch begin : float_passthrough
+        if ($rose(float_0_req_in) & (state_out == IDLE)) past_float0 = ($sampled(float_0_in));
+        if ($rose(float_1_req_in) & (state_out == IDLE)) past_float1 = ($sampled(float_1_in));
+        float0_in_out: assert property ( (state_out == OUTPUT) |-> (past_float0 == float_0_out) );
+        float1_in_out: assert property ( (state_out == OUTPUT) |-> (past_float1 == float_1_out) );
+    end : float_passthrough
 
 endmodule : sva_fpu_fma

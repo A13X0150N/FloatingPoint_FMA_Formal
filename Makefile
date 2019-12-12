@@ -14,7 +14,7 @@ formal:
 		formal compile -d fpu_fma -cuname my_bind_sva \
 			-target_cover_statements; \
 		formal verify -init qs_files/myinit.init \
-		-timeout 5m; \
+		-timeout 1m; \
 		exit"
 
 debug: 
