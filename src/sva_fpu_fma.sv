@@ -110,6 +110,8 @@ module sva_fpu_fma (clk, rst, float_0_busy_in, float_1_busy_in, busy_out, float_
     /////////////////
     // Assertions  //
 	/////////////////
-	assert_answer_produced: assert property ( float_0_req_in & float_1_req_in |-> ##[1:7] (state_out == OUTPUT) ##1 $rose(ready_answer_out) );
+	assert_answer_produced:        assert property ( float_0_req_in & float_1_req_in |-> ##[1:7] (state_out == OUTPUT) ##1 $rose(ready_answer_out) );
+	liveness_back_to_IDLE:         assert property (state_out == IDLE |-> s_eventually(state_out == IDLE));
+	assert_busy_output_check:      assert property (state_out != IDLE |=> busy_out == 1'b1);
 
 endmodule : sva_fpu_fma
